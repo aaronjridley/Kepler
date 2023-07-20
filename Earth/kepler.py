@@ -296,6 +296,8 @@ if (args['Quit'] == 0):
     for ti in Time:
         UT.append(float(ti.hour)+float(ti.minute)/60.0+float(ti.second)/3600.0)
 
+
+    print('Going into the ODE solver... this could take a bit...')
     ## Solve the ODE with odeint
     X = odeint(f_func,X0,t) # returns an 2-dimensional array with 
                             # the first index specifying the time
@@ -311,6 +313,8 @@ if (args['Quit'] == 0):
     vy = X[:,4]
     vz = X[:,5]
 
+    print('Making figures...')
+    
     # Plot the results
     plt.figure(1,figsize=(6,9))
 
@@ -555,6 +559,8 @@ if (args['Quit'] == 0):
 
     if (args['DoOutputFile'] == 1):
 
+        print('Writing output file')
+        
         fpout = open(args['Orbitfile'],'w')
         fpout.write("Satellite: A\n")
         fpout.write("year, mon, day, hr, min, sec, ") 

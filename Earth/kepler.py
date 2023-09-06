@@ -62,6 +62,10 @@ def get_args():
     parser.add_argument('-apogee', default = 400.0, \
                         type = float, \
                         help = 'apogee (as altitude) in km')
+
+    parser.add_argument('-alt', default = -1.0, \
+                        type = float, \
+                        help = 'altitude in km')
     
     parser.add_argument('-inc', metavar = 'inclination', default = 82.0, \
                         type = float, \
@@ -97,9 +101,13 @@ def get_args():
                         action = 'store_true', \
                         help = 'modify the orbit at the ascending eq crossing')
     parser.add_argument('-newinc', metavar = 'newinclination', \
-                        default = 0.0, \
+                        default = -1.0, \
                         type = float, \
                         help = 'inclination in degrees')
+    parser.add_argument('-newalt', metavar = 'newaltitude', \
+                        default = -1.0, \
+                        type = float, \
+                        help = 'new altitude (in km)')
         
     args = parser.parse_args()
 
@@ -157,6 +165,141 @@ def f_func(state, time):
 
     return f
 
+#------------------------------------------------------------------------
+# Find the next equatorward cross for ascending or descending node
+#------------------------------------------------------------------------
+
+def find_eq_crossing(X, isAscending):
+    z = X[:,2]
+    vz = X[:,5]
+    if (not isAscending):
+        vz = -vz
+    i = 1
+    iCross_ = -1
+    isFound = False
+    while (not isFound):
+        if ((z[i] * z[i-1] <= 0.0) and \
+            (vz[i] > 0)):
+            iCross_ = i
+            isFound = True
+        i += 1
+        if (i >= len(z)):
+            break
+    return iCross_
+
+#------------------------------------------------------------------------
+# find approximate period.  This is not really correct, since it
+# assumes a circular orbit. 
+#------------------------------------------------------------------------
+
+def calc_period(X0):
+    x0 = np.array(X0)
+    r0 = np.sqrt(np.sum(x0[0:3] * x0[0:3]))
+    v0 = np.sqrt(np.sum(x0[3:6] * x0[3:6]))
+    circ = 2 * np.pi * r0
+    period = circ / v0
+    return period
+
+#------------------------------------------------------------------------
+# store x, y, z, ut, and time in a dictionary
+#------------------------------------------------------------------------
+
+def store_vars_in_dict(StartTime, time, X, iStop_):
+
+    # These variables will be needed for outputting:
+    t = []
+    ut = np.zeros(iStop_)
+    x = np.zeros(iStop_)
+    y = np.zeros(iStop_)
+    z = np.zeros(iStop_)
+    vx = np.zeros(iStop_)
+    vy = np.zeros(iStop_)
+    vz = np.zeros(iStop_)
+    for i in range(iStop_):
+        t.append(StartTime + \
+                 datetime.timedelta(seconds = time[i]))
+        ut[i] = \
+            float(t[-1].hour) + \
+            float(t[-1].minute) / 60.0 + \
+            float(t[-i].second) / 3600.0
+        x[i] = X[i, 0]
+        y[i] = X[i, 1]
+        z[i] = X[i, 2]
+        vx[i] = X[i, 3]
+        vy[i] = X[i, 4]
+        vz[i] = X[i, 5]
+
+    data = {'time' : t,
+            'ut' : ut,
+            'x' : x,
+            'y' : y,
+            'z' : z,
+            'vx' : vx,
+            'vy' : vy,
+            'vz' : vz}
+
+    return data
+
+#------------------------------------------------------------------------
+# change the altitude of the orbit
+#------------------------------------------------------------------------
+
+def change_altitude(preData, newR):
+
+    print('Changing Altitude')
+
+    X0 = [preData['x'][-1],
+          preData['y'][-1],
+          preData['z'][-1],
+          preData['vx'][-1],
+          preData['vy'][-1],
+          preData['vz'][-1]]
+    x0 = np.array(X0)
+    r0 = np.sqrt(np.sum(x0[0:3] * x0[0:3]))
+    v0 = np.sqrt(np.sum(x0[3:6] * x0[3:6]))
+
+    print('  --> Current Alt : ', (r0 - R0)/1000.0, ' km')
+    print('  --> Target Alt : ', (newR - R0)/1000.0, ' km')
+    
+    sma = (newR + r0)/2.0
+    vChange = sqrt(mu * (2/r0 - 1/sma))
+    
+    x0[3:6] = x0[3:6] * vChange / v0
+
+    print('  --> Current Velocity : ', v0)
+    print('  --> New Velocity : ', vChange)
+    
+    period = calc_period(x0)
+    print('  --> Approximate Orbital Period : ', period/3600.0, ' hours')
+    
+    # create time array to go around a couple of times:
+    dt = (preData['time'][1] - preData['time'][0]).total_seconds()
+    Tstep2 = arange(0.0, 2 * period, dt)
+    
+    # calculate orbit:
+    Xstep2 = odeint(f_func, x0, Tstep2)
+
+    # next - find the equatorward crossing of the descending node:
+    iCross_ = find_eq_crossing(Xstep2, False)
+    print('  --> descending equatorward crossing found : ', Tstep2[iCross_])
+    if (iCross_ > -1):
+        preData2 = store_vars_in_dict(preData['time'][-1], Tstep2, Xstep2, iCross_)
+        preDataFinal = concat_dict(preData, preData2)
+        x0 = np.array(Xstep2[iCross_])
+        r0 = np.sqrt(np.sum(x0[0:3] * x0[0:3]))
+        v0 = np.sqrt(np.sum(x0[3:6] * x0[3:6]))
+        print('  --> Current Alt (descending) : ', (r0 - R0)/1000.0, ' km')
+        print('  --> Target Alt (descending)  : ', (newR - R0)/1000.0, ' km')
+        # Circularize Orbit
+        sma = (newR + r0)/2.0
+        vChange = sqrt(mu * (2/r0 - 1/sma))
+        x0[3:6] = x0[3:6] * vChange / v0
+    else:
+        print('Could not find equatorial crossing.... exiting')
+        exit()
+    
+    return preDataFinal, x0
+    
 #------------------------------------------------------------------------
 # Change the inclination of the orbit:
 #------------------------------------------------------------------------
@@ -238,6 +381,17 @@ def write_lines(fpout, times, lon, lat, alt):
         ys = "{:.3f}".format(lat[i])
         zs = "{:.3f}".format(alt[i])
         fpout.write(xs+", "+ys+", "+zs+"\n")
+    return
+
+#------------------------------------------------------------------------
+# concatinate two dictionaries 
+#------------------------------------------------------------------------
+
+def concat_dict(dict1, dict2):
+    dictOut = {}
+    for key in dict1.keys():
+        dictOut[key] = np.concatenate((dict1[key], dict2[key]))
+    return dictOut
         
 #------------------------------------------------------------------------
 # Main code is here:
@@ -248,6 +402,7 @@ args = get_args()
 if (len(args.restartin) > 4):
     print('Restarting from file : ', args.restartin)
     fpin = open(args.restartin, 'r')
+    sat = fpin.readline().strip('\n')
     line = fpin.readline()
     fpin.close()
     s = line.split(',')
@@ -273,9 +428,9 @@ if (len(args.restartin) > 4):
     StartTime = datetime.datetime(year,month,day,hour,minute,second)
     EndTime = StartTime + datetime.timedelta(seconds = TotalTime)
     
-    
 else:
 
+    sat = args.sat
     year = int(args.starttime[0:4])
     month = int(args.starttime[4:6])
     day = int(args.starttime[6:8])
@@ -293,6 +448,9 @@ else:
     # Compute and display some values for a circular orbit to help decide 
     # on initial conditions.
 
+    if (args.alt > 0.0):
+        Perigee = args.alt
+        Apogee = args.alt
     Perigee = args.perigee * 1000 + R0
     Apogee = args.apogee * 1000 + R0
 
@@ -335,73 +493,44 @@ EndTime = StartTime + datetime.timedelta(seconds = TotalTime)
 
 print('Start Time set to :', StartTime)
 
+if (len(args.orbitfile) < 4):
+    orbitfile = sat.replace(" ", "") + "_" + \
+        StartTime.strftime("%Y%m%d_%H%M%S") + ".csv"
+else:
+    orbitfile = args.orbitfile
 
 if (args.modify):
-    v0 = np.sqrt(vx0 * vx0 + \
-                 vy0 * vy0 + \
-                 vz0 * vz0)
-    r0 = np.sqrt(x0 * x0 + \
-                 y0 * y0 + \
-                 z0 * z0)
-    circ = 2 * np.pi * r0
-    period = circ / v0
-    print('Approximate Orbital Period : ', period/3600.0, ' hours')
-
     # Set initial conditions and define needed array.
     X0 = [ x0, y0, z0, vx0, vy0, vz0]
+    
+    period = calc_period(X0)
+    print('Approximate Orbital Period : ', period/3600.0, ' hours')
 
-    # create time array 
-    Tpre = arange(0.0, period, args.dt)
+    # create time array to go around a couple of times:
+    Tpre = arange(0.0, 2 * period, args.dt)
+    
+    # calculate orbit:
     Xpre = odeint(f_func, X0, Tpre) 
 
-    # let's look for the point where the orbit passes from the
-    # southern hemisphere (z < 0) to the northern hemisphere (z >
-    # 0)
-    i = 1
-    isFound = False
-    while (not isFound):
-        # z is the 3rd element of Xpre:
-        if ((Xpre[i, 2] > 0) and (Xpre[i-1, 2] < 0)):
-            isFound = True
-            iCross_ = i
-        else:
-            i += 1
-    if (isFound):
+    # find first equatorward cross moving northward:
+    iCross_ = find_eq_crossing(Xpre, True)
+    
+    if (iCross_ > -1):
         print('Ascending node, equator crossing found!')
-
-        # These variables will be needed for outputting:
-        preTime = []
-        preUt = np.zeros(iCross_)
-        preX = np.zeros(iCross_)
-        preY = np.zeros(iCross_)
-        preZ = np.zeros(iCross_)
-        for i in range(iCross_):
-            preTime.append(StartTime + \
-                           datetime.timedelta(seconds = Tpre[i]))
-            preUt[i] = \
-                float(preTime[-1].hour) + \
-                float(preTime[-1].minute) / 60.0 + \
-                float(preTime[-i].second) / 3600.0
-            preX[i] = Xpre[i, 0]
-            preY[i] = Xpre[i, 1]
-            preZ[i] = Xpre[i, 2]
+        preData = store_vars_in_dict(StartTime, Tpre, Xpre, iCross_)
 
         NewStartTime = StartTime + datetime.timedelta(seconds = Tpre[iCross_])
         TotalTime = (EndTime - NewStartTime).total_seconds()
         print('New Start Time : ', NewStartTime)
         StartTime = NewStartTime
-
-        x0 = Xpre[iCross_, 0]
-        y0 = Xpre[iCross_, 1]
-        z0 = Xpre[iCross_, 2]
-        vx0 = Xpre[iCross_, 3]
-        vy0 = Xpre[iCross_, 4]
-        vz0 = Xpre[iCross_, 5]
+        x0, y0, z0, vx0, vy0, vz0 = Xpre[iCross_, :]
+        
     else:
         print('Ascending node, equator crossing not found!')
         print('Exiting!')
         exit()
 
+    # Modify the inclination of the orbit:
     if (args.newinc > -1):
         Vold = np.array([vx0, vy0, vz0])
         Vnew = change_inclination(args.newinc, Vold)
@@ -410,6 +539,15 @@ if (args.modify):
         vx0 = Vnew[0]
         vy0 = Vnew[1]
         vz0 = Vnew[2]
+
+    # Modify the altitude of the orbit:
+    if (args.newalt > -1):
+        X0 = Xpre[iCross_, :]
+        newR = args.newalt * 1000 + R0
+        preData, x0 = change_altitude(preData, newR)
+        x0, y0, z0, vx0, vy0, vz0 = x0
+        StartTime = preData['time'][-1] + datetime.timedelta(seconds = args.dt)
+        TotalTime = (EndTime - StartTime).total_seconds()
         
 # Set initial conditions and define needed array.
 X0 = [ x0, y0, z0, vx0, vy0, vz0]       # set initial state of the system
@@ -577,34 +715,36 @@ if (len(args.plotfile) > 4):
     plt.savefig(args.plotfile)
 
 
-if (len(args.orbitfile) < 4):
-    orbitfile = args.sat.replace(" ", "") + "_" + \
-        Time[0].strftime("%Y%m%d_%H%M%S") + ".csv"
-else:
-    orbitfile = args.orbitfile
+# -------------------------------------------------------
+# Write data to a csv file
 
 print('Writing output file : ', orbitfile)
         
 fpout = open(orbitfile, 'w')
-fpout.write("Satellite: "+args.sat + "\n")
+fpout.write("Satellite: "+sat + "\n")
 fpout.write("year, mon, day, hr, min, sec, ")
 fpout.write("lon (deg), lat (deg), alt (km)\n")
 
 # If we modified the orbit, then there is a change at the
 # equatorward cross, so write out before this time:
 if (args.modify):
-    preLon, preLat, preAlt = convert_xyz_to_lla(preX, preY, preZ, \
-                                                preUt)
-    write_lines(fpout, preTime, preLon, preLat, preAlt)
+    preLon, preLat, preAlt = convert_xyz_to_lla(preData['x'], \
+                                                preData['y'], \
+                                                preData['z'], \
+                                                preData['ut'])
+    write_lines(fpout, preData['time'], preLon, preLat, preAlt)
 
 lon, lat, alt = convert_xyz_to_lla(x, y, z, UT)
 write_lines(fpout, Time, lon, lat, alt)
 
 fpout.close()
 
+# -------------------------------------------------------
+# Write last point to a restart file
+    
 RestartOut = \
     ".restart_" + \
-    args.sat.replace(" ", "") + "_" + \
+    sat.replace(" ", "") + "_" + \
     Time[-1].strftime("%Y%m%d_%H%M%S") + ".csv"
 rout = open(RestartOut, 'w')
 i = -1
@@ -612,6 +752,8 @@ timeS = Time[i].strftime(' %Y, %m, %d, %H, %M, %S')
 xs = ''
 for j in range(6):
     xs = xs + ", %f" % X[i,j] 
+rout.write(sat)
+rout.write("\n")
 rout.write(timeS)
 rout.write(xs)
 rout.close

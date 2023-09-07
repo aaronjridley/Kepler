@@ -548,6 +548,7 @@ if (args.modify):
         x0, y0, z0, vx0, vy0, vz0 = x0
         StartTime = preData['time'][-1] + datetime.timedelta(seconds = args.dt)
         TotalTime = (EndTime - StartTime).total_seconds()
+        print('  --> Real New Start Time : ', StartTime)
         
 # Set initial conditions and define needed array.
 X0 = [ x0, y0, z0, vx0, vy0, vz0]       # set initial state of the system
@@ -721,7 +722,7 @@ if (len(args.plotfile) > 4):
 print('Writing output file : ', orbitfile)
         
 fpout = open(orbitfile, 'w')
-fpout.write("Satellite: "+sat + "\n")
+fpout.write(sat + "\n")
 fpout.write("year, mon, day, hr, min, sec, ")
 fpout.write("lon (deg), lat (deg), alt (km)\n")
 

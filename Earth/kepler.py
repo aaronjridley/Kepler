@@ -449,10 +449,11 @@ else:
     # on initial conditions.
 
     if (args.alt > 0.0):
-        Perigee = args.alt
-        Apogee = args.alt
-    Perigee = args.perigee * 1000 + R0
-    Apogee = args.apogee * 1000 + R0
+        Perigee = args.alt * 1000 + R0
+        Apogee = args.alt * 1000 + R0
+    else:
+        Perigee = args.perigee * 1000 + R0
+        Apogee = args.apogee * 1000 + R0
 
     nOrbits = args.norbits
 

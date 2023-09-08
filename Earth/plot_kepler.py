@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 
 """
-kepler.py
-Script to solve the orbit problem using the scipy.integrate.odeint().
-http://faculty1.coloradocollege.edu/~sburns/toolbox/ODE_II.html
+
 """
 
 ## Import needed modules
@@ -31,6 +29,14 @@ def get_args():
     parser.add_argument('-cat', default = False, \
                         action = 'store_true', \
                         help = 'concatenate the files together for one long plot')
+
+    parser.add_argument('-diff', default = False, \
+                        action = 'store_true', \
+                        help = 'compare different satellites to the first')
+
+    parser.add_argument('-output', default = False, \
+                        action = 'store_true', \
+                        help = 'write data to a new file')
     
     args = parser.parse_args()
 
@@ -111,6 +117,53 @@ def read_all_kepler_files(files, doCat):
 #
 # ----------------------------------------------------------------------
 
+def great_circle(lat1, lon1, lat2, lon2):
+
+    l = len(lat1)
+    if (len(lat2) < l):
+        l = len(lat2)
+    
+    la1 = lat1[:l] * np.pi/180.0
+    la2 = lat2[:l] * np.pi/180.0
+    lo1 = lon1[:l] * np.pi/180.0
+    lo2 = lon2[:l] * np.pi/180.0
+
+    dist = np.arccos(np.cos(la1) * np.cos(la2) * np.cos(lo1 - lo2) +
+                     np.sin(la1) * np.sin(la2)) * 180.0 / np.pi
+    
+    return dist
+
+#------------------------------------------------------------------------
+# Find all equatorward crossings from south to north
+#------------------------------------------------------------------------
+
+def equatorward_crossing(lat):
+
+    iC2_ = []
+    for i in np.arange(1,len(lat)):
+        if ((lat[i] >= 0.0) & (lat[i-1] < 0.0)):
+            iC2_.append(i)
+
+    return iC2_
+
+#------------------------------------------------------------------------
+# Write data to file:
+#------------------------------------------------------------------------
+
+def write_lines(fpout, times, lon, lat, alt):
+    for i, t in enumerate(times):
+        timeS = t.strftime(' %Y, %m, %d, %H, %M, %S, ')
+        fpout.write(timeS)
+        xs = "{:.3f}".format(lon[i])
+        ys = "{:.3f}".format(lat[i])
+        zs = "{:.3f}".format(alt[i])
+        fpout.write(xs+", "+ys+", "+zs+"\n")
+    return
+
+# ----------------------------------------------------------------------
+#
+# ----------------------------------------------------------------------
+
 if __name__ == '__main__':
 
     # Get the input arguments
@@ -125,21 +178,90 @@ if __name__ == '__main__':
         print(filelists)
     else:
         filelists = [args.filelist]
-
-    for files in filelists:
+        
+    for iFile, files in enumerate(filelists):
 
         if (len(files) > 0):
         
             alldata = read_all_kepler_files(files, args.cat)
 
-            for data in alldata:
-                fig = plt.figure(figsize = (10,7))
-                ax = fig.add_axes([0.1,0.1,0.8,0.8])
+            if ((args.output) & (args.cat)):
+                orbitfile = alldata[0]['sat'] + '.csv'
+                print('Writing output file : ', orbitfile)
+                fpout = open(orbitfile, 'w')
+                fpout.write(sat + "\n")
+                fpout.write("year, mon, day, hr, min, sec, ")
+                fpout.write("lon (deg), lat (deg), alt (km)\n")
+                write_lines(fpout,
+                            alldata[0]['times'],
+                            alldata[0]['lon(deg)'],
+                            alldata[0]['lat(deg)'],
+                            alldata[0]['alt(km)'])
+                fpout.close()
+                
+            
+            if (args.diff):
+                # We want to plot the differences between the satellites
+                # make some assumptions here:
+                if (iFile == 0):
+                    iCrossRef_ = equatorward_crossing(alldata[0]['lat(deg)'])
+                    period = (alldata[0]['times'][iCrossRef_[1]] - alldata[0]['times'][iCrossRef_[0]]).total_seconds()
+                    print('  --> Period of reference sat (minutes) : ', period/60.0)
+                    fig = plt.figure(figsize = (7,10))
+                    ax1 = fig.add_axes([0.13,0.03,0.86,0.29])
+                    ax2 = fig.add_axes([0.13,0.35,0.86,0.29])
+                    ax3 = fig.add_axes([0.13,0.70,0.86,0.29])
+                    # should be concatenated...
+                    alts = alldata[0]['alt(km)'][iCrossRef_]
+                    timesRef = alldata[0]['times'][iCrossRef_]
+                    ax1.plot(timesRef, alts, label = alldata[0]['sat'])
+                    refSat = alldata[0]['sat']
+                    refLats = alldata[0]['lat(deg)'][iCrossRef_]
+                    refLons = alldata[0]['lon(deg)'][iCrossRef_]
 
-                ax.plot(data['times'], data['alt(km)'])
+                else:
+                    satLats = alldata[0]['lat(deg)'][iCrossRef_]
+                    satLons = alldata[0]['lon(deg)'][iCrossRef_]
+                    sat = refSat + ' to ' + alldata[0]['sat']
+                    dist = great_circle(refLats, refLons, satLats, satLons)
+                    ax2.plot(timesRef, dist * period / 360.0 / 60.0, label = sat)
 
-                sTime = data['times'][0].strftime('%Y%m%d_%H%M%S')
-                plotfile = data['sat'] + '_' + sTime + '.png'
-                print('Writing plot : ', plotfile)
-                fig.savefig(plotfile)
-                plt.close()
+                    iCross_ = equatorward_crossing(alldata[0]['lat(deg)'])                    
+                    alts = alldata[0]['alt(km)'][iCross_]
+                    times = alldata[0]['times'][iCross_]
+                    ax1.plot(times, alts, label = alldata[0]['sat'])
+                    
+                    satLats = alldata[0]['lat(deg)'][iCross_]
+                    satLons = alldata[0]['lon(deg)'][iCross_]
+                    dist = great_circle(refLats, refLons, satLats, satLons)
+                    ax3.plot(timesRef, dist, label = sat)
+                    
+                    if (files == filelists[-1]):
+
+                        ax1.set_ylabel('Altitude (km)')
+                        ax2.set_ylabel('Total Seperation (minutes)')
+                        ax3.set_ylabel('Long. Seperation (deg)')
+                        ax1.legend()
+                        ax2.legend()
+                        ax3.legend()
+
+                        
+                        plotfile = 'test.png'
+                        print('Writing plot : ', plotfile)
+                        fig.savefig(plotfile)
+                        plt.close()
+
+            else:
+                for data in alldata:
+                    fig = plt.figure(figsize = (10,7))
+                    ax = fig.add_axes([0.1,0.1,0.8,0.8])
+
+                    iCross_ = equatorward_crossing(data['lat(deg)'])
+                    
+                    ax.plot(data['times'][iCross_], data['alt(km)'][iCross_])
+
+                    sTime = data['times'][0].strftime('%Y%m%d_%H%M%S')
+                    plotfile = data['sat'] + '_' + sTime + '.png'
+                    print('Writing plot : ', plotfile)
+                    fig.savefig(plotfile)
+                    plt.close()

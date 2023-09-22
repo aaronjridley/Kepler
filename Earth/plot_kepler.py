@@ -256,9 +256,9 @@ if __name__ == '__main__':
                     fig = plt.figure(figsize = (10,7))
                     ax = fig.add_axes([0.1,0.1,0.8,0.8])
 
-                    iCross_ = equatorward_crossing(data['lat(deg)'])
-                    
-                    ax.plot(data['times'][iCross_], data['alt(km)'][iCross_])
+                    iCross_ = np.array(equatorward_crossing(data['lat(deg)']))
+                    ax.plot(np.array(data['times'])[iCross_],
+                            np.array(data['alt(km)'])[iCross_])
 
                     sTime = data['times'][0].strftime('%Y%m%d_%H%M%S')
                     plotfile = data['sat'] + '_' + sTime + '.png'

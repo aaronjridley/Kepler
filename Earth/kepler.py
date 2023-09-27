@@ -14,6 +14,7 @@ from pylab import *
 from scipy.integrate import odeint
 import re
 import sys
+import os
 
 # Set some constants:
 
@@ -95,6 +96,9 @@ def get_args():
                         help = 'output file')
     parser.add_argument('-restartin', default = '', \
                         help = 'restart output file')
+    parser.add_argument('-logfile', default = False, \
+                        action = 'store_true', \
+                        help = 'write a logfile-style file')
 
     # modify the orbit
     parser.add_argument('-modify', default = False, \
@@ -373,14 +377,22 @@ def convert_xyz_to_lla(x, y, z, UT):
 # Write data to file:
 #------------------------------------------------------------------------
 
-def write_lines(fpout, times, lon, lat, alt):
+def write_lines(fpout, times, lon, lat, alt, useSpaces = False):
+    deli = ' '
+    if (not useSpaces):
+        deli = ',' + deli
     for i, t in enumerate(times):
-        timeS = t.strftime(' %Y, %m, %d, %H, %M, %S, ')
+        timeS = t.strftime('%Y' + deli +
+                           '%m' + deli +
+                           '%d' + deli +
+                           '%H' + deli +
+                           '%M' + deli +
+                           '%S' + deli)
         fpout.write(timeS)
         xs = "{:.3f}".format(lon[i])
         ys = "{:.3f}".format(lat[i])
         zs = "{:.3f}".format(alt[i])
-        fpout.write(xs+", "+ys+", "+zs+"\n")
+        fpout.write(xs + deli + ys + deli + zs + "\n")
     return
 
 #------------------------------------------------------------------------
@@ -496,7 +508,11 @@ print('Start Time set to :', StartTime)
 
 if (len(args.orbitfile) < 4):
     orbitfile = sat.replace(" ", "") + "_" + \
-        StartTime.strftime("%Y%m%d_%H%M%S") + ".csv"
+        StartTime.strftime("%Y%m%d_%H%M%S")
+    if (args.logfile):
+        orbitfile += '.txt'
+    else:
+        orbitfile += ".csv"
 else:
     orbitfile = args.orbitfile
 
@@ -723,9 +739,34 @@ if (len(args.plotfile) > 4):
 print('Writing output file : ', orbitfile)
         
 fpout = open(orbitfile, 'w')
-fpout.write(sat + "\n")
-fpout.write("year, mon, day, hr, min, sec, ")
-fpout.write("lon (deg), lat (deg), alt (km)\n")
+
+if (args.logfile):
+    fpout.write("\n")
+    fpout.write("This orbit file was created with kepler.py\n")
+    fpout.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S\n"))
+    fpout.write("\n")
+    fpout.write("#SATELLITE\n")
+    fpout.write(sat + "\n")
+    fpout.write("\n")
+    fpout.write("#DIRECTORY\n")
+    fpout.write(os.getcwd() + "\n")
+    fpout.write("\n")
+    fpout.write("#VARIABLES\n")
+    fpout.write("Year\n")
+    fpout.write("Month\n")
+    fpout.write("Day\n")
+    fpout.write("Hour\n")
+    fpout.write("Minute\n")
+    fpout.write("Second\n")
+    fpout.write("Longitude (deg)\n")
+    fpout.write("Latitude (deg)\n")
+    fpout.write("Altitude (km)\n")
+    fpout.write("\n")
+    fpout.write("#START\n")    
+else:
+    fpout.write(sat + "\n")
+    fpout.write("year, mon, day, hr, min, sec, ")
+    fpout.write("lon (deg), lat (deg), alt (km)\n")
 
 # If we modified the orbit, then there is a change at the
 # equatorward cross, so write out before this time:
@@ -734,10 +775,10 @@ if (args.modify):
                                                 preData['y'], \
                                                 preData['z'], \
                                                 preData['ut'])
-    write_lines(fpout, preData['time'], preLon, preLat, preAlt)
+    write_lines(fpout, preData['time'], preLon, preLat, preAlt, args.logfile)
 
 lon, lat, alt = convert_xyz_to_lla(x, y, z, UT)
-write_lines(fpout, Time, lon, lat, alt)
+write_lines(fpout, Time, lon, lat, alt, args.logfile)
 
 fpout.close()
 

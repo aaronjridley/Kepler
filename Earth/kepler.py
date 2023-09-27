@@ -489,15 +489,19 @@ else:
     # Get initial position and speed.
 
     # ltan is in hours -> convert to radians:
-    LTAN = args.ltan * 15.0 * dtor
+    #LTAN = args.ltan * 15.0 * dtor
 
-    x0 = Perigee * np.cos(LTAN)
-    y0 = Perigee * np.sin(LTAN)
+    #x0 = Perigee * np.cos(LTAN)
+    #y0 = Perigee * np.sin(LTAN)
+    x0 = Perigee 
+    y0 = 0.0
     z0 = 0.0
     print('Position Components : ', x0, y0, z0)
     
-    vx0 = -v*np.cos(args.inc * dtor) * np.sin(LTAN)
-    vy0 = v*np.cos(args.inc * dtor) * np.cos(LTAN)
+    #vx0 = -v*np.cos(args.inc * dtor) * np.sin(LTAN)
+    #vy0 = v*np.cos(args.inc * dtor) * np.cos(LTAN)
+    vx0 = 0.0
+    vy0 = v*np.cos(args.inc * dtor)
     vz0 = v*np.sin(args.inc * dtor)
     print('Velocity Components : ', vx0, vy0, vz0)
 
@@ -591,8 +595,22 @@ print('Going into the ODE solver...')
 # time and the second index specifying the component of the state
 # vector
 
-X = odeint(f_func, X0, t) 
+X, outs = odeint(f_func, X0, t, full_output = 1) 
 
+# rotate for local time:
+if (args.ltan != 0):
+    print('Rotating solution to local time : ', args.ltan) 
+    LTAN = args.ltan * 15.0 * dtor
+    xn = X[:,0] * np.cos(LTAN) - X[:,1] * np.sin(LTAN)
+    yn = X[:,0] * np.sin(LTAN) + X[:,1] * np.cos(LTAN)
+    vxn = X[:,3] * np.cos(LTAN) - X[:,4] * np.sin(LTAN)
+    vyn = X[:,3] * np.sin(LTAN) + X[:,4] * np.cos(LTAN)
+
+    X[:,0] = xn
+    X[:,1] = yn
+    X[:,3] = vxn
+    X[:,4] = vyn
+    
 # positions
 x = X[:,0] 
 y = X[:,1]  

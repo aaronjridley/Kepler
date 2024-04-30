@@ -68,6 +68,10 @@ def get_args():
                         type = float, \
                         help = 'altitude in km')
     
+    parser.add_argument('-delay', default = 0.0, \
+                        type = float, \
+                        help = 'delay (in +/- fraction of a period) ADDED to start time')
+    
     parser.add_argument('-inc', metavar = 'inclination', default = 82.0, \
                         type = float, \
                         help = 'inclination in degrees')
@@ -396,6 +400,46 @@ def write_lines(fpout, times, lon, lat, alt, useSpaces = False):
     return
 
 #------------------------------------------------------------------------
+# Write out a data file
+#------------------------------------------------------------------------
+
+def open_data_file(orbitfile, sat, isLog = False):
+
+    print('Writing output file : ', orbitfile)
+        
+    fpout = open(orbitfile, 'w')
+
+    if (isLog):
+        fpout.write("\n")
+        fpout.write("This orbit file was created with kepler.py\n")
+        fpout.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S\n"))
+        fpout.write("\n")
+        fpout.write("#SATELLITE\n")
+        fpout.write(sat + "\n")
+        fpout.write("\n")
+        fpout.write("#DIRECTORY\n")
+        fpout.write(os.getcwd() + "\n")
+        fpout.write("\n")
+        fpout.write("#VARIABLES\n")
+        fpout.write("Year\n")
+        fpout.write("Month\n")
+        fpout.write("Day\n")
+        fpout.write("Hour\n")
+        fpout.write("Minute\n")
+        fpout.write("Second\n")
+        fpout.write("Longitude (deg)\n")
+        fpout.write("Latitude (deg)\n")
+        fpout.write("Altitude (km)\n")
+        fpout.write("\n")
+        fpout.write("#START\n")    
+    else:
+        fpout.write(sat + "\n")
+        fpout.write("year, mon, day, hr, min, sec, ")
+        fpout.write("lon (deg), lat (deg), alt (km)\n")
+    
+    return fpout
+
+#------------------------------------------------------------------------
 # concatinate two dictionaries 
 #------------------------------------------------------------------------
 
@@ -506,9 +550,19 @@ else:
     print('Velocity Components : ', vx0, vy0, vz0)
 
 StartTime = datetime.datetime(year,month,day,hour,minute,second)
+print('Start Time set to :', StartTime)
+if (np.abs(args.delay) > 0.0):
+    print('  --> delay entered!')
+    X0 = [ x0, y0, z0, vx0, vy0, vz0]
+    period = calc_period(X0)
+    print('  --> Approximate Orbital Period : ', period/3600.0, ' hours')
+    delay = args.delay * period
+    print('  --> delay set to: ', delay, ' seconds')
+    StartTime = StartTime + datetime.timedelta(seconds = delay)
+    print('  --> new start time : ', StartTime)
+    
 EndTime = StartTime + datetime.timedelta(seconds = TotalTime)
 
-print('Start Time set to :', StartTime)
 
 if (len(args.orbitfile) < 4):
     orbitfile = sat.replace(" ", "") + "_" + \
@@ -751,41 +805,9 @@ if (len(args.plotfile) > 4):
     plt.savefig(args.plotfile)
 
 
-# -------------------------------------------------------
-# Write data to a csv file
-
-print('Writing output file : ', orbitfile)
-        
-fpout = open(orbitfile, 'w')
-
-if (args.logfile):
-    fpout.write("\n")
-    fpout.write("This orbit file was created with kepler.py\n")
-    fpout.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S\n"))
-    fpout.write("\n")
-    fpout.write("#SATELLITE\n")
-    fpout.write(sat + "\n")
-    fpout.write("\n")
-    fpout.write("#DIRECTORY\n")
-    fpout.write(os.getcwd() + "\n")
-    fpout.write("\n")
-    fpout.write("#VARIABLES\n")
-    fpout.write("Year\n")
-    fpout.write("Month\n")
-    fpout.write("Day\n")
-    fpout.write("Hour\n")
-    fpout.write("Minute\n")
-    fpout.write("Second\n")
-    fpout.write("Longitude (deg)\n")
-    fpout.write("Latitude (deg)\n")
-    fpout.write("Altitude (km)\n")
-    fpout.write("\n")
-    fpout.write("#START\n")    
-else:
-    fpout.write(sat + "\n")
-    fpout.write("year, mon, day, hr, min, sec, ")
-    fpout.write("lon (deg), lat (deg), alt (km)\n")
-
+# This opens the output file and writes the header:
+fpout = open_data_file(orbitfile, args.sat, isLog = args.logfile)
+    
 # If we modified the orbit, then there is a change at the
 # equatorward cross, so write out before this time:
 if (args.modify):

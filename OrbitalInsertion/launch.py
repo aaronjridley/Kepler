@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Dave Jarvis
+Calculation of orbital insertion given initial conditions
 """
 
 ## Import needed modules

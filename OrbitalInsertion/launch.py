@@ -28,15 +28,15 @@ vRotation = 465.1  # m/s <- rotational speed of Earth at equator
 orbitAltitude = 400.0 * 1000.0  # km -> converted to meters
 
 dt = 0.01
-radius = 0.3 # m
+radius = 0.25 # m
 Cd = 0.29 # drag coefficient
 mass0 = 250 # kg this is the wet pass
 payloadMass = 25 # kg
 rocketMass = mass0 * 0.1 # assume rocket body + engine = 10% of wet mass
 alt0 = 6000 # meters
-v0Vertical = 8.0 * soundSpeed  # assume initial launch is vertical
+v0Vertical = 7.0 * soundSpeed  # assume initial launch is vertical
 v0Horizontal = vRotation
-Isp = 1700.0 # specific impulse in s
+Isp = 625.0 # specific impulse in s
 Ve = Isp * 9.8 # exhaust velocity in m/s
 
 area = pi * radius**2
@@ -142,8 +142,21 @@ while ((masses[-1] > rocketMass + payloadMass) & \
     totalThrust = Ve * massFlowRate
 
     if (totalThrust > 0):
-        # Want to thrust in the vertical direction just enough to counteract drag
+        # Want to thrust in the vertical direction just enough to
+        # counteract drag
         vThrust = -drag[1]
+
+        altReached = calc_altitude_reached(alt, vV)
+        print(altReached, orbitAltitude)
+        if (altReached < orbitAltitude):
+            # If we are not reaching the orbital altitude, accelerate
+            # in the vertical direction by a bit:
+            vThrust = 0.99 * totalThrust 
+        if (vThrust > totalThrust):
+            print('Total Thrust exceeded!')
+            print('  --> limiting vThrust from ',vThrust, ' to ', totalThrust)
+            vThrust = totalThrust
+
         # put the rest of the thrust in the horizontal direction
         hThrust = np.sqrt(totalThrust**2 - vThrust**2)
     else:
